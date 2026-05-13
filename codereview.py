@@ -46,8 +46,29 @@ def get_current_branch() -> str:
     return _git("rev-parse", "--abbrev-ref", "HEAD")
 
 
+_EXCLUDED_FILES = [
+    "package-lock.json",  # npm
+    "yarn.lock",          # Yarn
+    "pnpm-lock.yaml",     # pnpm
+    "bun.lockb",          # Bun
+    "Pipfile.lock",       # Pipenv
+    "poetry.lock",        # Poetry
+    "uv.lock",            # uv
+    "Gemfile.lock",       # Bundler
+    "composer.lock",      # Composer
+    "Cargo.lock",         # Cargo
+    "go.sum",             # Go modules
+    "Package.resolved",   # Swift PM
+    "Podfile.lock",       # CocoaPods
+    "pubspec.lock",       # Flutter/Dart
+    "packages.lock.json", # NuGet
+    "mix.lock",           # Elixir
+]
+
+
 def get_diff(target_branch: str) -> str:
-    return _git("diff", f"{target_branch}...HEAD")
+    excludes = [f":(exclude){f}" for f in _EXCLUDED_FILES]
+    return _git("diff", f"{target_branch}...HEAD", "--", ".", *excludes)
 
 
 # ── config loading ────────────────────────────────────────────────────────────
