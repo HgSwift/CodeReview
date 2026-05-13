@@ -98,6 +98,10 @@ CodeReview
 CodeReview -main
 CodeReview -feature/my-feature
 
+# Save output to a file (also streams to terminal)
+CodeReview -o review.md
+CodeReview -main -o review.md
+
 # Help
 CodeReview -h
 ```

@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """
 CodeReview - AI-powered code review CLI tool
-Usage: CodeReview [-branchname]
+Usage: CodeReview [-branchname] [-o file]
 """
 
 import sys
@@ -80,7 +80,7 @@ def select_config(configs: list[dict]) -> dict:
 
 # ── LLM backends ─────────────────────────────────────────────────────────────
 
-def _stream_anthropic(config: dict, prompt: str) -> None:
+def _stream_anthropic(config: dict, prompt: str, out=None) -> None:
     try:
         import anthropic
     except ImportError:
@@ -100,9 +100,11 @@ def _stream_anthropic(config: dict, prompt: str) -> None:
     ) as stream:
         for text in stream.text_stream:
             print(text, end="", flush=True)
+            if out:
+                out.write(text)
 
 
-def _stream_openai_compatible(config: dict, prompt: str) -> None:
+def _stream_openai_compatible(config: dict, prompt: str, out=None) -> None:
     try:
         from openai import OpenAI
     except ImportError:
@@ -132,27 +134,40 @@ def _stream_openai_compatible(config: dict, prompt: str) -> None:
         delta = chunk.choices[0].delta.content
         if delta:
             print(delta, end="", flush=True)
+            if out:
+                out.write(delta)
 
 
 # ── entry point ───────────────────────────────────────────────────────────────
 
 def main() -> None:
     target_branch = "develop"
+    output_file = None
 
-    if len(sys.argv) > 1:
-        arg = sys.argv[1]
+    i = 1
+    while i < len(sys.argv):
+        arg = sys.argv[i]
         if arg in ("-h", "--help"):
             print(
-                "Usage: CodeReview [-branchname]\n\n"
-                "  -branchname   Branch to diff against (default: develop)\n\n"
+                "Usage: CodeReview [-branchname] [-o file]\n\n"
+                "  -branchname   Branch to diff against (default: develop)\n"
+                "  -o file       Save review output to a file\n\n"
                 "Examples:\n"
-                "  CodeReview              # diff against develop\n"
-                "  CodeReview -main        # diff against main\n"
-                "  CodeReview -feature/xyz # diff against feature/xyz\n"
+                "  CodeReview                        # diff against develop\n"
+                "  CodeReview -main                  # diff against main\n"
+                "  CodeReview -o review.md           # save output to file\n"
+                "  CodeReview -main -o review.md     # both\n"
             )
             sys.exit(0)
+        elif arg == "-o":
+            if i + 1 >= len(sys.argv):
+                print("Error: -o requires a filename.", file=sys.stderr)
+                sys.exit(1)
+            output_file = sys.argv[i + 1]
+            i += 2
         elif arg.startswith("-") and len(arg) > 1:
             target_branch = arg[1:]
+            i += 1
         else:
             print(f"Unknown argument: {arg}\nUse -h for help.", file=sys.stderr)
             sys.exit(1)
@@ -199,24 +214,35 @@ def main() -> None:
         diff=diff,
     )
 
-    print("=" * 60)
-    print("CODE REVIEW")
-    print("=" * 60 + "\n")
+    header = "=" * 60 + "\nCODE REVIEW\n" + "=" * 60 + "\n"
+    footer = "\n\n" + "=" * 60
 
-    llm_type = config.get("type", "").lower()
-    if llm_type == "anthropic":
-        _stream_anthropic(config, prompt)
-    elif llm_type in ("llamacpp", "openai", "openai_compatible"):
-        _stream_openai_compatible(config, prompt)
-    else:
-        print(
-            f"Unknown LLM type '{llm_type}'.\n"
-            "Supported: anthropic, llamacpp, openai_compatible",
-            file=sys.stderr,
-        )
-        sys.exit(1)
+    out = open(output_file, "w", encoding="utf-8") if output_file else None
+    try:
+        print(header)
+        if out:
+            out.write(header + "\n")
 
-    print("\n\n" + "=" * 60)
+        llm_type = config.get("type", "").lower()
+        if llm_type == "anthropic":
+            _stream_anthropic(config, prompt, out)
+        elif llm_type in ("llamacpp", "openai", "openai_compatible"):
+            _stream_openai_compatible(config, prompt, out)
+        else:
+            print(
+                f"Unknown LLM type '{llm_type}'.\n"
+                "Supported: anthropic, llamacpp, openai_compatible",
+                file=sys.stderr,
+            )
+            sys.exit(1)
+
+        print(footer)
+        if out:
+            out.write(footer + "\n")
+    finally:
+        if out:
+            out.close()
+            print(f"\nReview saved to {output_file}")
 
 
 if __name__ == "__main__":
